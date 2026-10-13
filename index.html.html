@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>xG Calculator</title>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --page:#c4b0f8; --head:#0b6fd6; --headtx:#fff;
+  --name:#b5f5c3; --label:#7a2e0e; --labeltx:#fff;
+  --input:#fde6cf; --cell:#fff; --yellow:#fde68a; --green:#7ed321;
+  --tx:#111; --line:#fff; --red:#b3141c;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --page:#2b2150; --cell:#e9e6f5; --input:#e8cdb4; --name:#9ad9a8; --yellow:#e5cf74; --green:#6fb81f;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#2b2150; --cell:#e9e6f5; --input:#e8cdb4; --name:#9ad9a8; --yellow:#e5cf74; --green:#6fb81f;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--page);color:var(--tx);font:13px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;padding:12px}
+.wrap{max-width:1000px;margin:0 auto}
+.scroll{overflow-x:auto;max-width:100%}
+table{border-collapse:separate;border-spacing:1px;min-width:900px;width:100%}
+th{background:var(--head);color:var(--headtx);font-weight:600;font-size:10px;padding:5px 3px;text-align:center}
+td{background:var(--cell);text-align:center;height:34px;padding:0;font-size:12px}
+td.lab{background:var(--label);color:var(--labeltx);font-size:11px;width:68px}
+td.nm{background:var(--name);width:190px}
+td.in{background:var(--input)}
+td.y{background:var(--yellow)}
+td.g{background:var(--green);font-weight:600}
+td.b{font-weight:700}
+td.res{background:var(--yellow);font-weight:600;font-size:11px;line-height:1.5}
+input{width:100%;height:100%;box-sizing:border-box;border:0;background:transparent;text-align:center;font:inherit;color:#111;padding:6px 4px}
+td.nm input{text-align:left;padding-left:8px}
+.bar{display:flex;justify-content:flex-end;gap:6px;margin:6px 0 4px}
+button{border:0;font:inherit;font-size:11px;padding:7px 12px;cursor:pointer;color:#fff;background:var(--red)}
+button.reset{background:#fde68a;color:#111}
+button.add{background:var(--head);font-size:13px;padding:10px 16px;margin-top:10px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--head);outline-offset:1px}
+.gp{background:var(--cell);color:#111;margin-top:6px;padding:10px}
+.gh{font-weight:700;margin-bottom:8px}
+.gg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.gp label{display:block;font-size:11px;color:#444;margin-bottom:2px}
+.gp input{background:var(--input);height:auto;border:1px solid #fff;padding:8px;text-align:center;color:#111}
+.gr{margin-top:10px}
+.gr div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid #ccc;font-size:13px}
+.gr .big{font-weight:700;font-size:16px}
+.gr .ok{color:#0a7a2f;font-weight:700}
+.gr .bad{color:#b3141c}
+details{margin-top:8px}
+summary{cursor:pointer;font-size:12px;color:#333;margin-bottom:6px}
+.bar2{margin-top:8px}
+.sv{background:var(--head)}
+.lb{background:var(--head);margin-left:4px;padding:4px 8px}
+.lb.yes{background:#1f9d57}
+.lb.no{background:#d93025}
+.lb.xx{background:#777}
+.gr div.rg{background:#d6f3e1;border-left:5px solid #1f9d57;padding-left:8px}
+.gr div.rn{background:#fadcd9;border-left:5px solid #d93025;padding-left:8px}
+.bd{font-weight:700;color:#fff;padding:3px 12px;border-radius:12px;font-size:12px}
+.bd.g{background:#1f9d57}
+.bd.n{background:#d93025}
+.lnote{font-size:12px;color:#444;margin:0 0 8px}
+.logbox{margin-top:14px}
+.gr .bb{border-top:0;padding:0 0 4px}
+.bars{display:flex;flex-direction:column;gap:2px;width:100%}
+.bars i{display:block;height:6px}
+.bp{background:#0b6fd6}
+.ba{background:#12803a}
+#csvbox{display:none;width:100%;box-sizing:border-box;height:90px;margin-top:6px;font:11px monospace}
+#dl,#imp{background:var(--head)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="list"></div>
+  
+  <div class="gp logbox"><div class="gh">Matches and learning</div><div id="msg" class="lnote"></div><div id="cnt"></div><div id="cal"></div><div class="gh" style="margin-top:12px">Saved matches</div><div id="lg"></div><div class="bar"><button id="dl">Save matches as file</button><button id="imp">Import matches</button><input type="file" id="impf" accept=".csv,text/csv" style="display:none"><button class="rm" id="clr">Clear all</button></div><textarea id="csvbox" readonly aria-label="Matches as CSV text"></textarea></div>
+</div>
+<script>
+var list=document.getElementById('list');
+var LOG=[],DB=null,UID=null,busy=false,again=false,SYN={};
+function setMsg(t){var m=document.getElementById('msg');if(m)m.textContent=t}
+try{LOG=JSON.parse(localStorage.getItem('xglog')||'[]')}catch(e){LOG=[]}
+function saveLog(){
+  try{localStorage.setItem('xglog',JSON.stringify(LOG))}catch(e){}
+  if(!DB||!UID)return;
+  if(busy){again=true;return}
+  busy=true;
+  var col=DB.collection('data/users/'+UID),ops=[],keys={};
+  LOG.forEach(function(e){
+    var k='m_'+e.t,j=JSON.stringify(e);keys[k]=1;
+    if(SYN[k]!==j)ops.push(col.doc(k).set(JSON.parse(j)).then(function(){SYN[k]=j}));
+  });
+  Object.keys(SYN).forEach(function(k){
+    if(!keys[k])ops.push(col.doc(k).delete().then(function(){delete SYN[k]}));
+  });
+  Promise.all(ops).catch(function(){setMsg('Could not save')}).then(function(){busy=false;if(again){again=false;saveLog()}});
+}
+var P0=[0,1,0,0,0,0,0],TH=P0.slice(),NLEARN=0;
+function sg(x){return 1/(1+Math.exp(-x))}
+function R(a,b,c){return '<div'+(c?' class="'+c+'"':'')+'><span>'+a+'</span><span>'+b+'</span></div>'}
+function resolved(){return LOG.filter(function(e){return e.o!==null})}
+function featOf(e){var f=e.f;if(f&&f.length===6)return f;if(f&&f.length===4)return f.concat([0,0]);var p=Math.min(0.999,Math.max(0.001,e.p));return[Math.log(p/(1-p)),0,0,0,0,0]}
+function fit(d,iters){
+  var th=P0.slice(),lam=4;
+  if(!d.length)return th;
+  var L=0.25*d.length*10+lam+1,X=d.map(function(e){return[1].concat(featOf(e))}),Y=d.map(function(e){return e.o?1:0});
+  for(var it=0;it<iters;it++){
+    var g=th.map(function(v,k){return lam*(v-P0[k])});
+    for(var i=0;i<X.length;i++){var z=0,k;for(k=0;k<7;k++)z+=th[k]*X[i][k];var r=sg(z)-Y[i];for(k=0;k<7;k++)g[k]+=r*X[i][k]}
+    for(var j=0;j<7;j++)th[j]-=g[j]/L;
+  }
+  return th;
+}
+function train(){var d=resolved();NLEARN=d.length;TH=fit(d,300)}
+function pred(th,f){var z=th[0];for(var k=0;k<6;k++)z+=th[k+1]*f[k];return sg(z)}
+function predict(f){return pred(TH,f)}
+function nrm(s){return String(s||'').trim().toLowerCase()}
+function teamsOf(e){if(e.h!==undefined)return[nrm(e.h),nrm(e.a)];var p=String(e.n||'').split(' - ');return[nrm(p[0]),nrm(p[1])]}
+function hist(n1,n2){
+  var a=nrm(n1),b=nrm(n2),A={n:0,g:0},B={n:0,g:0},T={n:0,g:0};
+  resolved().forEach(function(e){
+    var t=teamsOf(e),ia=a&&(t[0]===a||t[1]===a),ib=b&&(t[0]===b||t[1]===b);
+    if(ia){A.n++;if(e.o)A.g++}
+    if(ib){B.n++;if(e.o)B.g++}
+    if(ia||ib){T.n++;if(e.o)T.g++}
+  });
+  return{A:A,B:B,T:T};
+}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function csv(){
+  var rows=[['date','match','minute','score_at_half_time','xg_first_half','over25_odds','under25_odds','red_cards','model_chance_percent','goal_in_2nd_half']];
+  LOG.forEach(function(e){rows.push([new Date(e.t).toISOString().slice(0,10),e.n,e.m,e.sc,e.mx!=null?e.mx:'',e.ov||'',e.un||'',e.rd||0,(e.p*100).toFixed(1),e.o===null?'':(e.o?'yes':'no')])});
+  return rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(',')}).join('\n');
+}
+function renderLog(){
+  train();
+  var done=resolved(),G=done.filter(function(e){return e.o}).length;
+  document.getElementById('cnt').innerHTML='<div class="gr">'+R('Matches saved',LOG.length)+R('With result',done.length)+R('Goal in 2nd half',done.length?G+' of '+done.length+' ('+Math.round(G/done.length*100)+'%)':'-')+R('Learning',done.length?'on, from '+done.length+' matches':'starts after the first result')+'</div>';
+  var cal='';
+  if(done.length){
+    var B=[[0,0.5],[0.5,0.6],[0.6,0.7],[0.7,0.8],[0.8,1.01]],rows='';
+    B.forEach(function(b){
+      var x=done.filter(function(e){return e.p>=b[0]&&e.p<b[1]});
+      if(x.length){
+        var pr=x.reduce(function(a,e){return a+e.p},0)/x.length*100,hit=x.filter(function(e){return e.o}).length/x.length*100;
+        rows+=R(Math.round(b[0]*100)+'-'+Math.min(100,Math.round(b[1]*100))+'% ('+x.length+' matches)',pr.toFixed(0)+'% vs '+hit.toFixed(0)+'%')+'<div class="bb"><span class="bars"><i class="bp" style="width:'+pr.toFixed(0)+'%"></i><i class="ba" style="width:'+hit.toFixed(0)+'%"></i></span></div>';
+      }
+    });
+    cal='<div class="gh" style="margin-top:12px">Is the model accurate?</div><p class="lnote">Blue bar: what the model predicted. Green bar: how often a goal really fell.</p><div class="gr">'+rows+'</div>';
+    if(done.length>=5){
+      var s0=Math.max(0,done.length-120),br=0,bl=0,n=0;
+      for(var q=s0;q<done.length;q++){
+        var y=done[q].o?1:0,th=fit(done.slice(Math.max(0,q-150),q),80);
+        br+=Math.pow(done[q].p-y,2);bl+=Math.pow(pred(th,featOf(done[q]))-y,2);n++;
+      }
+      var rt=G/done.length;
+      cal+='<div class="gr">'+R('Brier score, raw model (lower is better)',(br/n).toFixed(3))+R('Brier score, learned (on unseen matches)',(bl/n).toFixed(3))+R('Brier score, always guessing the average',(rt*(1-rt)).toFixed(3))+'</div><p class="lnote">The model is useful only if its score is lower than the "always guessing the average" line.</p>';
+    }
+  }else cal='<p class="lnote">Save a match at half time, then mark whether a goal fell in the 2nd half. The calculator learns from every result.</p>';
+  document.getElementById('cal').innerHTML=cal;
+  function mrow(e,i){
+    return '<div'+(e.o===null?'':(e.o?' class="rg"':' class="rn"'))+'><span>'+esc(e.n)+'</span><span>'+(e.o===null?'<button class="lb yes" data-i="'+i+'" data-a="1">Yes, goal</button><button class="lb no" data-i="'+i+'" data-a="0">No goal</button>':(e.o?'<span class="bd g">Goal</span>':'<span class="bd n">No goal</span>'))+'<button class="lb xx" data-i="'+i+'" data-a="x">x</button></span></div>';
+  }
+  var lp='',lf='',nf=0;
+  for(var i=LOG.length-1;i>=0;i--){
+    if(LOG[i].o===null)lp+=mrow(LOG[i],i);else{lf+=mrow(LOG[i],i);nf++}
+  }
+  document.getElementById('lg').innerHTML=(lp?'<div class="gr">'+lp+'</div>':'<p class="lnote">No matches waiting for a result.</p>')+(nf?'<details id="fin"'+(FIN?' open':'')+'><summary>Finished matches ('+nf+')</summary><div class="gr">'+lf+'</div></details>':'');
+  var bs=document.querySelectorAll('#list>div');
+  for(var j=0;j<bs.length;j++)bs[j].dispatchEvent(new Event('input'));
+}
+var FIN=false;
+document.getElementById('lg').addEventListener('toggle',function(ev){if(ev.target.id==='fin')FIN=ev.target.open},true);
+document.getElementById('lg').onclick=function(e){var t=e.target;if(t.dataset&&t.dataset.i!==undefined){var i=+t.dataset.i;if(t.dataset.a==='x')LOG.splice(i,1);else LOG[i].o=t.dataset.a==='1';saveLog();renderLog()}};
+var clrT=0;
+document.getElementById('clr').onclick=function(){var b=this;if(!clrT){clrT=setTimeout(function(){clrT=0;b.textContent='Clear all'},3000);b.textContent='Tap again to confirm';return}clearTimeout(clrT);clrT=0;b.textContent='Clear all';LOG=[];saveLog();renderLog()};
+document.getElementById('dl').onclick=function(){
+  var t=csv();
+  try{
+    var bl=new Blob([t],{type:'text/csv'}),u=URL.createObjectURL(bl),l=document.createElement('a');
+    l.href=u;l.download='xg-matches.csv';document.body.appendChild(l);l.click();l.remove();
+    setTimeout(function(){URL.revokeObjectURL(u)},1000);return;
+  }catch(e){}
+  var bx=document.getElementById('csvbox');bx.style.display='block';bx.value=t;bx.select();
+};
+function parseCsv(t){var rows=[],r=[],c='',q=false;for(var i=0;i<t.length;i++){var ch=t[i];if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}else if(ch=='"')q=true;else if(ch==','){r.push(c);c=''}else if(ch=='\n'||ch=='\r'){if(ch=='\r'&&t[i+1]=='\n')i++;r.push(c);c='';rows.push(r);r=[]}else c+=ch}if(c!==''||r.length){r.push(c);rows.push(r)}return rows}
+document.getElementById('imp').onclick=function(){document.getElementById('impf').click()};
+document.getElementById('impf').onchange=function(){
+  var f=this.files[0];if(!f)return;var rd=new FileReader(),inp=this;
+  rd.onload=function(){
+    var rows=parseCsv(String(rd.result)).slice(1),add=0,have={};
+    LOG.forEach(function(e){have[e.n+'|'+e.sc+'|'+(e.p*100).toFixed(1)]=1});
+    rows.forEach(function(r,ix){
+      if(r.length<10||!r[1])return;
+      var key=r[1]+'|'+r[3]+'|'+r[8];if(have[key])return;
+      var pct=parseFloat(r[8]);if(isNaN(pct))return;
+      have[key]=1;var parts=r[1].split(' - ');
+      LOG.push({t:(Date.parse(r[0])||Date.now())+ix,n:r[1],h:parts[0],a:parts[1]||'',m:45,sc:r[3],p:pct/100,mx:parseFloat(r[4])||0,ov:parseFloat(r[5])||0,un:parseFloat(r[6])||0,rd:parseInt(r[7])||0,f:null,o:r[9]==='yes'?true:(r[9]==='no'?false:null)});add++;
+    });
+    LOG.sort(function(a,b){return a.t-b.t});saveLog();renderLog();setMsg('Imported '+add+' matches');inp.value='';
+  };
+  rd.readAsText(f);
+};
+renderLog();
+var HEAD='<tr><th></th><th></th><th>Current<br>Score</th><th>xG</th><th>Match xG</th><th>xG Correct<br>Score</th><th>Expected<br>Correct Score</th><th>Expected<br>Goals Now</th><th>xSxG</th><th>Team Goals<br>Overdue</th><th>Total Goals<br>Overdue</th><th>Win chance<br>1 / X / 2</th></tr>';
+function num(v){var n=parseFloat(String(v).replace(',','.'));return isNaN(n)?0:n}
+function fmt(n){return String(Number(n.toFixed(2)))}
+var PANEL='<div class="gp"><div class="gh">Goal prediction</div><div class="gg"><div><label>Pre-match Over 2.5 odds</label><input class="ov" inputmode="decimal" placeholder="1.90"></div><div><label>Pre-match Under 2.5 odds</label><input class="un" inputmode="decimal" placeholder="1.90"></div><div><label>Live odds now: Over (goals now + 0.5)</label><input class="lo" inputmode="decimal" placeholder="1.30"></div><div><label>Live odds now: Under (goals now + 0.5)</label><input class="lu" inputmode="decimal" placeholder="3.50"></div></div><details><summary>More inputs: red cards, first-half shots per team</summary><div class="gg"><div><label>Red cards: home</label><input class="r1" inputmode="numeric"></div><div><label>Red cards: away</label><input class="r2" inputmode="numeric"></div><div><label>Shots on target: home</label><input class="sth" inputmode="numeric"></div><div><label>Shots on target: away</label><input class="sta" inputmode="numeric"></div><div><label>Big chances: home</label><input class="bch" inputmode="numeric"></div><div><label>Big chances: away</label><input class="bca" inputmode="numeric"></div><div><label>Corners: home</label><input class="coh" inputmode="numeric"></div><div><label>Corners: away</label><input class="coa" inputmode="numeric"></div></div></details><div class="gr"></div><div class="bar2"><button class="sv">Save prediction</button></div></div>';
+function make(init){
+  var box=document.createElement('div');
+  box.innerHTML='<div class="scroll"><table>'+HEAD+
+  '<tr><td class="nm"><input class="n1" value="'+(init?init.h:'')+'" aria-label="Home team"></td><td class="lab">Home Team</td>'+
+  '<td class="in"><input class="s1" inputmode="numeric" value="'+(init?init.sh:'')+'" aria-label="Home score"></td>'+
+  '<td class="in"><input class="x1" inputmode="decimal" value="'+(init?init.xh:'')+'" aria-label="Home xG"></td>'+
+  '<td rowspan="2" class="b mx"></td><td class="c1"></td><td class="e1"></td><td rowspan="2" class="eg"></td><td class="p1"></td><td class="o1"></td><td rowspan="2" class="to"></td><td rowspan="2" class="res rs"></td></tr>'+
+  '<tr><td class="nm"><input class="n2" value="'+(init?init.a:'')+'" aria-label="Away team"></td><td class="lab">Away Team</td>'+
+  '<td class="in"><input class="s2" inputmode="numeric" value="'+(init?init.sa:'')+'" aria-label="Away score"></td>'+
+  '<td class="in"><input class="x2" inputmode="decimal" value="'+(init?init.xa:'')+'" aria-label="Away xG"></td>'+
+  '<td class="y c2"></td><td class="e2"></td><td class="y p2"></td><td class="o2"></td></tr>'+
+  '</table></div>'+PANEL+'<div class="bar"><button class="reset">Reset Calc</button></div>';
+  var q=function(s){return box.querySelector(s)};
+  function setG(el,val){el.textContent=val;el.classList.toggle('g',val>0)}
+  function run(){
+    var s1=Math.floor(num(q('.s1').value)),s2=Math.floor(num(q('.s2').value));
+    var x1=num(q('.x1').value),x2=num(q('.x2').value);
+    var c1=x1*1.25,c2=x2*1.25;
+    var e1=Math.floor(c1+1e-9),e2=Math.floor(c2+1e-9);
+    var mx=x1+x2;
+    q('.mx').textContent=fmt(mx);
+    q('.c1').textContent=c1.toFixed(2);q('.c2').textContent=c2.toFixed(2);
+    q('.p1').textContent=c1.toFixed(2);q('.p2').textContent=c2.toFixed(2);
+    q('.e1').textContent=e1;q('.e2').textContent=e2;
+    setG(q('.eg'),e1+e2);
+    setG(q('.o1'),Math.max(0,e1-s1));setG(q('.o2'),Math.max(0,e2-s2));
+    setG(q('.to'),Math.max(0,Math.floor(mx+1e-9)-(s1+s2)));
+    
+    function F(t){t=Math.min(90,Math.max(0,t));return t<=45?0.45*t/45:0.45+0.55*(t-45)/45}
+    function row(a,b,c){return '<div'+(c?' class="'+c+'"':'')+'><span>'+a+'</span><span>'+b+'</span></div>'}
+    var m=45;
+    
+    
+    
+    var ov=num(q('.ov').value),un=num(q('.un').value),oddsL=0;
+    if(ov>1&&un>1){var pO=(1/ov)/(1/ov+1/un),lo=0.2,hi=6;for(var it=0;it<40;it++){var mid=(lo+hi)/2,pm=Math.exp(-mid),ov3=1-pm-mid*pm-mid*mid/2*pm;if(ov3<pO)lo=mid;else hi=mid}oddsL=(lo+hi)/2}
+    
+    var prior=oddsL>0?oddsL:2.6;
+    var Fm=F(m),kw=0.35;
+    var altH=0.30*num(q('.sth').value)+0.03*num(q('.coh').value)+0.35*num(q('.bch').value);
+    var altA=0.30*num(q('.sta').value)+0.03*num(q('.coa').value)+0.35*num(q('.bca').value);
+    var alt=altH+altA;
+    var xhO=x1>0?(altH>0?0.75*x1+0.25*altH:x1):altH,xaO=x2>0?(altA>0?0.75*x2+0.25*altA:x2):altA;
+    var obs=xhO+xaO;
+    var tot=(prior*kw+obs)/(kw+Fm);
+    var mom=1;
+    
+    var r1n=Math.floor(num(q('.r1').value)),r2n=Math.floor(num(q('.r2').value)),reds=r1n+r2n;
+    var shr=obs>0?xhO/obs:0.5,rem0=tot*(1-Fm)*mom;
+    var lamH=rem0*shr*Math.pow(0.75,r1n)*Math.pow(1.25,r2n),lamA=rem0*(1-shr)*Math.pow(0.75,r2n)*Math.pow(1.25,r1n);
+    var gd=s1-s2,ad=Math.abs(gd),lf=1,tf=1;
+    if(ad>=3){lf=0.80;tf=0.90}else if(ad>=1){lf=0.95;tf=1.10}
+    var gH=gd>0?lf:(gd<0?tf:1),gA=gd<0?lf:(gd>0?tf:1);
+    lamH*=gH;lamA*=gA;
+    var rem=lamH+lamA;
+    var p0=Math.exp(-rem),p1=rem*p0,p2=rem*rem/2*p0;
+    var pg=1-p0;
+    var ps=0,pmk=0;
+    
+    var lov=num(q('.lo').value),lun=num(q('.lu').value);
+    if(lov>1&&lun>1)pmk=(1/lov)/(1/lov+1/lun);else if(lov>1)pmk=Math.min(0.98,(1/lov)/1.05);
+    function lgt(x){x=Math.min(0.995,Math.max(0.005,x));return Math.log(x/(1-x))}
+    var wm=pmk>0?0.5:0,ws=ps>0?0.2:0;
+    var pb=(wm+ws>0)?sg((1-wm-ws)*lgt(pg)+wm*lgt(pmk)+ws*lgt(ps)):pg;
+    var pq=Math.min(0.999,Math.max(0.001,pb));
+    var H=hist(q('.n1').value,q('.n2').value);
+    var hr=(H.T.g+3)/(H.T.n+4),hs=H.T.n>0?Math.log(hr/(1-hr))-Math.log(3):0;
+    var fv=[Math.log(pq/(1-pq)),mx-1.2,oddsL>0?oddsL-2.7:0,reds,Math.min(3,ad)-1,hs];
+    var pc=pb,cb=false;
+    if(NLEARN>0){pc=predict(fv);cb=true}
+    function pois(l,n){var p=[Math.exp(-l)];for(var k=1;k<=n;k++)p.push(p[k-1]*l/k);return p}
+    var qh=pois(lamH,12),qa=pois(lamA,12),w1=0,wx=0,w2=0,fs={};
+    for(var gi=0;gi<=12;gi++)for(var gj=0;gj<=12;gj++){var pp=qh[gi]*qa[gj],hg=s1+gi,ag=s2+gj;fs[hg+'-'+ag]=pp;if(hg>ag)w1+=pp;else if(hg==ag)wx+=pp;else w2+=pp}
+    q('.rs').innerHTML='1&nbsp;'+(w1*100).toFixed(0)+'% X&nbsp;'+(wx*100).toFixed(0)+'% 2&nbsp;'+(w2*100).toFixed(0)+'%';
+    var pn=1-Math.exp(-tot*mom*(rem0>0?rem/rem0:1)*(F(Math.min(90,m+15))-Fm));
+    var total=s1+s2;
+    var lab=total==0?'Goal in remaining time (Over 0.5)':'Another goal (Over '+(total+0.5)+')';
+    var h=row('Expected goals still to come',rem.toFixed(2))+row(lab,(pc*100).toFixed(1)+'%','big')+row('Fair odds',pc>0.0005?(1/pc).toFixed(2):'-')+(cb?row('Before learning',(pb*100).toFixed(1)+'%')+row('Learned from',NLEARN+' matches'):'')+(pb!==pg?row('Poisson model alone',(pg*100).toFixed(1)+'%'):'')+(pmk>0?row('Chance implied by live odds',(pmk*100).toFixed(1)+'%'):'')+(ps>0?row('Season 2nd-half goal rate',(ps*100).toFixed(0)+'%'):'')+(oddsL>0?row('Pre-match goals from odds',oddsL.toFixed(2)):'')+row('Goal in first 15 min of 2nd half',(pn*100).toFixed(1)+'%')+row('Over '+(total+1.5)+' (2+ more goals)',((1-p0-p1)*100).toFixed(1)+'%')+row('Over '+(total+2.5)+' (3+ more goals)',((1-p0-p1-p2)*100).toFixed(1)+'%');
+    if(alt>0&&mx>0&&Math.abs(alt-mx)>0.4*Math.max(mx,0.5)){h+='<div class="bad">xG first half ('+fmt(mx)+') and shot data ('+alt.toFixed(2)+') disagree: check your xG source.</div>'}
+    if(reds>0){h+=row('Red cards effect on goal rate','home x'+(Math.pow(0.75,r1n)*Math.pow(1.25,r2n)).toFixed(2)+', away x'+(Math.pow(0.75,r2n)*Math.pow(1.25,r1n)).toFixed(2))}
+    
+    
+    
+    
+    if(ad>=1){h+=row('Game state effect on goal rate','home x'+gH.toFixed(2)+', away x'+gA.toFixed(2))}
+    if(H.A.n||H.B.n){var hp=[];if(H.A.n)hp.push(esc(q('.n1').value||'Home')+' '+H.A.g+'/'+H.A.n);if(H.B.n)hp.push(esc(q('.n2').value||'Away')+' '+H.B.g+'/'+H.B.n);h+=row('Your log: 2nd-half goals',hp.join(', '))}
+    q('.gr').innerHTML=h;
+    box.dataset.pg=pb;box.dataset.m=m;box.dataset.sc=s1+'-'+s2;box.dataset.f=JSON.stringify(fv);box.dataset.mx=mx;box.dataset.ov=ov;box.dataset.un=un;box.dataset.rd=reds;
+  }
+  box.addEventListener('input',run);
+  
+  q('.sv').onclick=function(){var pg=parseFloat(box.dataset.pg);if(isNaN(pg))return;var f=null;try{f=JSON.parse(box.dataset.f)}catch(e){}LOG.push({t:Date.now(),h:q('.n1').value||'Home',a:q('.n2').value||'Away',n:(q('.n1').value||'Home')+' - '+(q('.n2').value||'Away'),m:45,sc:box.dataset.sc,p:pg,f:f,mx:+box.dataset.mx,ov:+box.dataset.ov,un:+box.dataset.un,rd:+box.dataset.rd,o:null});saveLog();renderLog();setMsg('Saved: '+LOG[LOG.length-1].n);var b=this;b.textContent='Saved';setTimeout(function(){b.textContent='Save prediction'},1200)};
+  q('.reset').onclick=function(){box.querySelectorAll('input').forEach(function(i){i.value=''});run()};
+  run();
+  list.appendChild(box);
+}
+make();
+
+</script>
+</body>
+</html>
