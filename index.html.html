@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="xG">
 <title>Kalkulator xG</title>
 <style>
 :root{
@@ -136,6 +138,12 @@ input{font-size:16px}
 .gb.gb2{grid-template-columns:1.25fr 1fr}
 .wrn:empty{display:none}
 .wrn p{background:#fff3cd;border:2px solid #f0b429;color:#5c3b00;padding:8px 10px;border-radius:6px;margin:8px 0 0;font-size:13px;line-height:1.35}
+.gb.gb3{grid-template-columns:1.7fr 1fr 1fr}
+.gb.gb1{grid-template-columns:1fr}
+.cl.mp b{font-size:24px}
+.cl.mp small{display:block;font-weight:400;font-size:11px;color:#333;margin-top:2px;line-height:1.3}
+.cl.mp.ylw{background:#f0b429}
+.cl.mp.rd{background:#f08a80}
 </style>
 </head>
 <body>
@@ -145,7 +153,7 @@ input{font-size:16px}
   <div class="gp logbox"><div class="gh">Mecze i uczenie się</div><div id="msg" class="lnote"></div><div id="cnt"></div><div id="cal"></div><div class="sec">Zapisane mecze</div><div id="lg"></div><div class="sec s70">Sprawdzenia w trakcie 2. połowy (gol od wpisanej minuty)</div><div id="lcnt"></div><div id="llg"></div><div class="bar"><button id="dl">Zapisz mecze do pliku</button><label class="fbtn" for="impf">Wczytaj mecze z pliku</label><input type="file" id="impf" class="vh"><button class="rm" id="clr">Wyczyść wszystko</button></div><textarea id="csvbox" readonly aria-label="Mecze jako tekst CSV"></textarea><div id="msg2" class="lnote"></div><details id="pasteBox"><summary>Nie działa wczytywanie z pliku? Wklej tekst</summary><textarea id="pst" placeholder="Wklej tu całą zawartość pliku z meczami"></textarea><button id="pbtn">Wczytaj z wklejonego tekstu</button></details></div>
 </div>
 <div id="toast"></div>
-<p class="lnote" style="text-align:center;margin:8px 0 24px">Wersja kalkulatora: 13.10 (v19)</p>
+<p class="lnote" style="text-align:center;margin:8px 0 24px">Wersja kalkulatora: 13.10 (v22)</p>
 <script>
 var list=document.getElementById('list');
 var LOG=[],DB=null,UID=null,busy=false,busyAt=0,again=false,SYN={};
@@ -172,7 +180,7 @@ function saveLog(){
   Object.keys(SYN).forEach(function(k){
     if(!keys[k])ops.push(col.doc(k).delete().then(function(){delete SYN[k]}));
   });
-  Promise.all(ops).catch(function(){setMsg('Nie udało się zsynchronizować z kontem, zapisano tylko na tym urządzeniu')}).then(function(){busy=false;if(again){again=false;saveLog()}});
+  Promise.all(ops).catch(function(){setMsg('Nie udało się zapisać')}).then(function(){busy=false;if(again){again=false;saveLog()}});
 }
 var P0=[0,1,0,0,0,0,0],TH=P0.slice(),NLEARN=0;
 function sg(x){return 1/(1+Math.exp(-x))}
@@ -357,10 +365,14 @@ document.getElementById('llg').onclick=onLogClick;
 document.getElementById('llg').addEventListener('toggle',function(ev){if(ev.target.id==='finl')FINL=ev.target.open},true);
 var clrT=0;
 document.getElementById('clr').onclick=function(){var b=this;if(!clrT){clrT=setTimeout(function(){clrT=0;b.textContent='Wyczyść wszystko'},3000);b.textContent='Stuknij ponownie, aby potwierdzić';return}clearTimeout(clrT);clrT=0;b.textContent='Wyczyść wszystko';LOG=[];GM={};persistGM();saveLog();renderLog()};
-async function exportCsv(kind,fname){
+function exportCsv(kind,fname){
   if(!LOG.some(function(e){return kind==='all'||(kind==='late'?e.k==='late':e.k!=='late')})){setMsg('Nie ma jeszcze nic do zapisania');return}
   var t=csv(kind);
-  try{var dd=await claude.use('downloads');if(dd){await dd.save({filename:fname,data:t});return}}catch(e){if(e&&e.code==='declined')return}
+  try{
+    var bl=new Blob([t],{type:'text/csv'}),u=URL.createObjectURL(bl),l=document.createElement('a');
+    l.href=u;l.download=fname;document.body.appendChild(l);l.click();l.remove();
+    setTimeout(function(){URL.revokeObjectURL(u)},1000);return;
+  }catch(e){}
   var bx=document.getElementById('csvbox');bx.style.display='block';bx.value=t;bx.select();
 }
 document.getElementById('dl').onclick=function(){exportCsv('all','xg-matches.csv')};
@@ -411,27 +423,6 @@ document.getElementById('impf').onchange=function(){
   rd.readAsText(f);
 };
 document.getElementById('pbtn').onclick=function(){importText(document.getElementById('pst').value);document.getElementById('pst').value=''};
-(async function(){
-  try{
-    var u=await claude.use('user'),d=await claude.use('db');
-    if(!u||!d)return;
-    var id=await u.id();if(!id)return;
-    var col=d.collection('data/users/'+id),snap=await col.get();
-    DB=d;UID=id;
-    var byT={},legacy=false;
-    LOG.forEach(function(e){byT[e.t]=e});
-    snap.docs.forEach(function(x){
-      if(x.id.indexOf('m_')===0){var e=x.data();if(e){e=JSON.parse(JSON.stringify(e));byT[e.t]=e;SYN['m_'+e.t]=JSON.stringify(e)}}
-      else if(x.id==='gmmap'){var mp=(x.data()||{}).map||{};Object.keys(mp).forEach(function(k){if(!GM[k])GM[k]=mp[k]})}
-      else if(x.id==='log'){legacy=true;((x.data()||{}).entries||[]).forEach(function(e){if(!byT[e.t])byT[e.t]=JSON.parse(JSON.stringify(e))})}
-    });
-    LOG=Object.keys(byT).map(function(k){return byT[k]}).sort(function(a,b){return a.t-b.t});
-    saveLog();
-    if(Object.keys(GM).length)persistGM();
-    if(legacy)col.doc('log').delete().catch(function(){});
-    renderLog();
-  }catch(e){}
-})();
 renderLog();
 function num(v){var n=parseFloat(String(v).replace(',','.'));return isNaN(n)?0:n}
 function fmt(n){return String(Number(n.toFixed(2)))}
@@ -441,16 +432,9 @@ function make(init){
   box.innerHTML='<div class="mt"><div class="hd"></div><div class="hd">Drużyna</div><div class="hd">Wynik</div><div class="hd">xG</div>'+
   '<div class="lab">Gosp.</div><div class="nm"><input class="n1" placeholder="Gospodarze" aria-label="Gospodarze"></div><div class="in"><input class="s1" inputmode="numeric" aria-label="Wynik gospodarzy"></div><div class="in"><input class="x1" inputmode="decimal" aria-label="xG gospodarzy"></div>'+
   '<div class="lab">Goście</div><div class="nm"><input class="n2" placeholder="Goście" aria-label="Goście"></div><div class="in"><input class="s2" inputmode="numeric" aria-label="Wynik gości"></div><div class="in"><input class="x2" inputmode="decimal" aria-label="xG gości"></div></div>'+
-  '<div class="gb"><div class="hd">Szansa na gola: gospodarze</div><div class="hd">Szansa na gola: goście</div><div class="hd">Brak gola do końca</div>'+
-  '<div class="cl b pg1"></div><div class="cl b pg2"></div><div class="cl b pn0"></div></div>'+
-  '<div class="gb"><div class="hd">2 lub więcej goli do końca</div><div class="hd">3 lub więcej goli do końca</div><div class="hd">Tempo 1. połowy</div>'+
-  '<div class="cl p2p"></div><div class="cl p3p"></div><div class="cl tp"></div></div>'+
-  '<div class="gb"><div class="hd">Gol w oknie 46–60 min</div><div class="hd">Gol w oknie 61–75 min</div><div class="hd">Gol w oknie 76–90 min</div>'+
-  '<div class="cl w1"></div><div class="cl w2"></div><div class="cl w3"></div></div>'+
-  '<div class="gb"><div class="hd">Gol od 46. min do końca</div><div class="hd">Gol od 61. min do końca</div><div class="hd">Gol od 76. min do końca</div>'+
-  '<div class="cl u1"></div><div class="cl u2"></div><div class="cl u3"></div></div>'+
-  '<p class="lnote wnote" style="margin:4px 0 0"></p>'+
-  '<div class="gb gb2"><div class="hd">Ile goli jeszcze może paść</div><div class="hd">Szansa na wynik 1 / X / 2</div><div class="cl b ef"></div><div class="rs"></div></div>'+PANEL+'<div class="bar"><button class="reset">Wyczyść</button></div>';
+  '<div class="gb gb3"><div class="hd">Szansa na gola w 2. połowie</div><div class="hd">Brak gola w 2. połowie</div><div class="hd">Tempo 1. połowy</div>'+
+  '<div class="cl mp"></div><div class="cl b pn0"></div><div class="cl tp"></div></div>'+
+  '<div class="gb gb1"><div class="hd">Szansa na wynik 1 / X / 2</div><div class="rs"></div></div>'+PANEL+'<div class="bar"><button class="reset">Wyczyść</button></div>';
   var q=function(s){return box.querySelector(s)};
   function setG(el,val){el.textContent=val;el.classList.toggle('g',val>0)}
   function run(){
@@ -507,32 +491,23 @@ function make(init){
     var qh=pois(lamH,12),qa=pois(lamA,12),w1=0,wx=0,w2=0,fs={};
     for(var gi=0;gi<=12;gi++)for(var gj=0;gj<=12;gj++){var pp=qh[gi]*qa[gj],hg=s1+gi,ag=s2+gj;fs[hg+'-'+ag]=pp;if(hg>ag)w1+=pp;else if(hg==ag)wx+=pp;else w2+=pp}
     q('.rs').innerHTML='1&nbsp;'+(w1*100).toFixed(0)+'% X&nbsp;'+(wx*100).toFixed(0)+'% 2&nbsp;'+(w2*100).toFixed(0)+'%';
-    var lamE=-Math.log(1-Math.min(0.999,Math.max(0,pc))),fH=rem>0?lamH/rem:0.5,lH=lamE*fH,lA=lamE*(1-fH);
-    var pG1=1-Math.exp(-lH),pG2=1-Math.exp(-lA),e0=Math.exp(-lamE);
     var setT=function(sel,txt,hi){var el=q(sel);if(el){el.textContent=txt;if(hi!==undefined)el.classList.toggle('g',hi)}};
-    setT('.pg1',(pG1*100).toFixed(0)+'%',pG1>=0.6);setT('.pg2',(pG2*100).toFixed(0)+'%',pG2>=0.6);setT('.pn0',((1-pc)*100).toFixed(0)+'%');
-    setT('.p2p',((1-e0*(1+lamE))*100).toFixed(0)+'%');setT('.p3p',((1-e0*(1+lamE+lamE*lamE/2))*100).toFixed(0)+'%');
-    var pk=[Math.exp(-lamE)];for(var kk=1;kk<=14;kk++)pk.push(pk[kk-1]*lamE/kk);
-    var bA=0,bB=14,bLen=99,bCov=0;
-    for(var a0=0;a0<=14;a0++){var c0=0;for(var b0=a0;b0<=14;b0++){c0+=pk[b0];if(c0>=0.8){if(b0-a0<bLen||(b0-a0===bLen&&c0>bCov)){bLen=b0-a0;bA=a0;bB=b0;bCov=c0}break}}}
-    var modeK=0;for(var m0=1;m0<=14;m0++)if(pk[m0]>pk[modeK])modeK=m0;
-    var gpl=function(n){return n===1?'gol':((n%10>=2&&n%10<=4&&(n%100<10||n%100>=20))?'gole':'goli')};
-    var rng=(bA===bB?bA+' '+gpl(bA):bA+'\u2013'+bB+' '+gpl(bB)),gnow=s1+s2;
-    var efEl=q('.ef');
-    if(efEl)efEl.innerHTML='<div><b>'+rng+'</b><small>najczęściej: '+modeK+' · średnio '+lamE.toFixed(1).replace('.',',')+'<br>zakres obejmuje ok. '+Math.round(bCov*100)+'% szans<br>Razem w meczu: '+(gnow+bA)+(bA===bB?'':'\u2013'+(gnow+bB))+' (teraz '+gnow+')</small></div>';
+    setT('.pn0',((1-pc)*100).toFixed(0)+'%');
+    var cih=ciHT(fv),mpEl=q('.mp');
+    if(mpEl){
+      var need=lov>1?1/lov:0,mpCls='';
+      var dlt=need>0?pc-need:1;
+      if(pc>=0.8&&dlt>0.03)mpCls='g';else if(pc<0.7||dlt<-0.03)mpCls='rd';else mpCls='ylw';
+      mpEl.innerHTML='<div><b>'+(pc*100).toFixed(1)+'%</b>'+(cih?'<small>zakres '+Math.round(cih[0]*100)+'\u2013'+Math.round(cih[1]*100)+'%</small>':'')+'<small>uczciwy kurs '+(pc>0.0005?(1/pc).toFixed(2):'-')+'</small>'+(need>0?'<small>przy kursie '+lov+' opłaca się od '+Math.round(need*100)+'%</small>':'<small>wpisz kurs na żywo, a kolor pokaże opłacalność</small>')+'</div>';
+      mpEl.classList.remove('g','ylw','rd');mpEl.classList.add(mpCls)}
     var exp1h=prior*0.45,rt1=exp1h>0?obs/exp1h:0;
     setT('.tp',obs>0?('x'+rt1.toFixed(2)+(rt1<0.75?' (wolniejsze)':(rt1>1.25?' (szybsze)':' (normalne)'))):'brak danych');
-    var WW=winW(),W3=WW.w,wcf=function(f){return 1-Math.exp(-lamE*f)};
-    setT('.w1',(wcf(W3[0])*100).toFixed(0)+'%');setT('.w2',(wcf(W3[1])*100).toFixed(0)+'%');setT('.w3',(wcf(W3[2])*100).toFixed(0)+'%');
-    setT('.u1',(pc*100).toFixed(0)+'%');setT('.u2',(wcf(W3[1]+W3[2])*100).toFixed(0)+'%');setT('.u3',(wcf(W3[2])*100).toFixed(0)+'%');
-    var pctS=WW.w.map(function(x){return Math.round(x*100)+'%'}).join(', '),wn=q('.wnote');
-    if(wn)wn.textContent='Rozkład goli w oknach: '+pctS+(WW.n?' (założenie z korektą z '+WW.n+' goli z Twoich meczów).':' (moje założenie, jeszcze bez minut goli z Twoich meczów).')+' Dolny rząd pokazuje szansę, jeśli wejdziesz w zakład dopiero od danej minuty, a gol jeszcze nie padł.';
 
 
     var pn=1-Math.exp(-tot*mom*(rem0>0?rem/rem0:1)*(F(Math.min(90,m+15))-Fm));
     var total=s1+s2;
     var lab=total==0?'Gol do końca meczu (powyżej 0,5)':'Kolejny gol (powyżej '+(total+0.5)+')';
-    var h=row('Oczekiwane gole do końca meczu',rem.toFixed(2))+row(lab,(pc*100).toFixed(1)+'%'+ciTxt(ciHT(fv)),'big')+row('Uczciwy kurs',pc>0.0005?(1/pc).toFixed(2):'-')+(cb?row('Przed uczeniem się',(pb*100).toFixed(1)+'%')+row('Nauka na podstawie (liczba meczów)',NLEARN):'')+(pb!==pg?row('Sam model Poissona',(pg*100).toFixed(1)+'%'):'')+(pmk>0?row('Szansa wynikająca z kursów na żywo',(pmk*100).toFixed(1)+'%'):'')+(ps>0?row('Sezonowa częstość goli w 2. połowie',(ps*100).toFixed(0)+'%'):'')+(oddsL>0?row('Gole w meczu wg kursów przed meczem',oddsL.toFixed(2)):'')+row('Gol w pierwszych 15 min 2. połowy',(pn*100).toFixed(1)+'%')+(pk1n+pk2n>0?row('xG po odjęciu karnych (gosp. / goście)',x1.toFixed(2)+' / '+x2.toFixed(2)):'');
+    var h=row('Oczekiwane gole do końca meczu',rem.toFixed(2))+(cb?row('Przed uczeniem się',(pb*100).toFixed(1)+'%')+row('Nauka na podstawie (liczba meczów)',NLEARN):'')+(pb!==pg?row('Sam model Poissona',(pg*100).toFixed(1)+'%'):'')+(pmk>0?row('Szansa wynikająca z kursów na żywo',(pmk*100).toFixed(1)+'%'):'')+(ps>0?row('Sezonowa częstość goli w 2. połowie',(ps*100).toFixed(0)+'%'):'')+(oddsL>0?row('Gole w meczu wg kursów przed meczem',oddsL.toFixed(2)):'')+row('Gol w pierwszych 15 min 2. połowy',(pn*100).toFixed(1)+'%')+(pk1n+pk2n>0?row('xG po odjęciu karnych (gosp. / goście)',x1.toFixed(2)+' / '+x2.toFixed(2)):'');
     if(alt>0&&mx>0&&Math.abs(alt-mx)>0.4*Math.max(mx,0.5)){h+='<div class="bad">xG z 1. połowy ('+fmt(mx)+') i dane o strzałach ('+alt.toFixed(2)+') mocno się różnią: sprawdź źródło xG.</div>'}
     if(reds>0){h+=row('Wpływ czerwonych kartek na tempo goli','gospodarze x'+(Math.pow(0.75,r1n)*Math.pow(1.25,r2n)).toFixed(2)+', goście x'+(Math.pow(0.75,r2n)*Math.pow(1.25,r1n)).toFixed(2))}
     
@@ -560,8 +535,9 @@ function make(init){
       var lg7=function(x){x=Math.min(0.995,Math.max(0.005,x));return Math.log(x/(1-x))};
       var fv2=[lg7(p70),haveData?Math.max(-1,Math.min(1,ratio-1)):0,pm7>0?lg7(pm7):lg7(p70)],p70c=predL(fv2);
       var pct=(p70c*100).toFixed(0),why=(!haveData?'Brak danych z 2. połowy, wynik opiera się na modelu z przerwy.':(ratio<0.7?'Tempo od przerwy było wolne.':(ratio>1.3?'Tempo od przerwy było szybkie.':'Tempo od przerwy było normalne.')))+(lr1+lr2>0?' Czerwone kartki zmieniły tempo gry.':'');
-      var vcl=p70c>=0.55?'vg':(p70c<=0.45?'vr':'vy');
-      var vdv='<div class="vd '+vcl+'">'+(p70c>=0.55?'Duża szansa na gola ('+pct+'%): trzymaj zakład':(p70c<=0.45?'Mała szansa na gola ('+pct+'%): wycofaj zakład':'Granica ('+pct+'%): decyzja zależy od oferty cash-out'))+'<small>'+why+'</small></div>';
+      var needL=mo>1?1/mo:0,hi7=needL>0?needL+0.03:0.55,lo7=needL>0?needL-0.03:0.45;
+      var vcl=p70c>=hi7?'vg':(p70c<=lo7?'vr':'vy');
+      var vdv='<div class="vd '+vcl+'">'+(p70c>=hi7?'Duża szansa na gola ('+pct+'%): trzymaj zakład':(p70c<=lo7?'Mała szansa na gola ('+pct+'%): wycofaj zakład':'Granica ('+pct+'%): decyzja zależy od oferty cash-out'))+'<small>'+why+'</small></div>';
       var lh=vdv+row('Oczekiwane gole od minuty '+(Math.round(lm)+1)+' do końca',lam70.toFixed(2));
       if(haveData)lh+=row('Tempo od przerwy w porównaniu z oczekiwanym','x'+ratio.toFixed(2)+(ratio<0.7?' (wolne)':(ratio>1.3?' (szybkie)':' (normalne)')));
       lh+=row('Gol od minuty '+(Math.round(lm)+1)+' do końca',(p70c*100).toFixed(1)+'%'+ciTxt(ciLT(fv2)),'big')+row('Uczciwy kurs',p70c>0.0005?(1/p70c).toFixed(2):'-');
@@ -569,7 +545,7 @@ function make(init){
       else if(NLEARNL>0)lh+=row('Surowy model',(p70*100).toFixed(1)+'%');
       if(NLEARNL>0)lh+=row('Nauka na podstawie (liczba sprawdzeń)',NLEARNL);
       if(pm7>0&&Math.abs(p70-pm7)>0.15)lh+='<div class="bad">Model i rynek mocno się różnią ('+(p70*100).toFixed(0)+'% wobec '+(pm7*100).toFixed(0)+'%): rynek zwykle wie więcej, sprawdź skład i przebieg meczu.</div>';
-      lh+='<p class="lnote" style="margin-top:6px">To szacunek modelu, a nie porada. Zielony od 55%, czerwony do 45%, a żółty pomiędzy to przybliżone reguły, więc porównaj je ze swoją ofertą cash-out.</p>';
+      lh+='<p class="lnote" style="margin-top:6px">To szacunek modelu, a nie porada. '+(needL>0?'Progi wynikają z kursu na żywo: 1 podzielone przez kurs, plus minus 3 punkty procentowe.':'Bez kursu na żywo: zielony od 55%, czerwony do 45%, żółty pomiędzy (to przybliżone progi).')+' To nie jest porada, porównaj z ofertą cash-out.</p>';
       lres.innerHTML=lh;box.dataset.lp=p70;box.dataset.lf=JSON.stringify(fv2);box.dataset.lmin=Math.round(lm);
     }else lres.innerHTML='<p class="lnote">Wpisz minutę (od 46 do 89), aby zobaczyć szansę na gola do końca meczu.</p>';
     var ws=[],nv=function(sel){return num(q(sel).value)};
