@@ -3,8 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="apple-mobile-web-app-title" content="xG">
 <title>Kalkulator xG</title>
 <style>
 :root{
@@ -153,7 +151,7 @@ input{font-size:16px}
   <div class="gp logbox"><div class="gh">Mecze i uczenie się</div><div id="msg" class="lnote"></div><div id="cnt"></div><div id="cal"></div><div class="sec">Zapisane mecze</div><div id="lg"></div><div class="sec s70">Sprawdzenia w trakcie 2. połowy (gol od wpisanej minuty)</div><div id="lcnt"></div><div id="llg"></div><div class="bar"><button id="dl">Zapisz mecze do pliku</button><label class="fbtn" for="impf">Wczytaj mecze z pliku</label><input type="file" id="impf" class="vh"><button class="rm" id="clr">Wyczyść wszystko</button></div><textarea id="csvbox" readonly aria-label="Mecze jako tekst CSV"></textarea><div id="msg2" class="lnote"></div><details id="pasteBox"><summary>Nie działa wczytywanie z pliku? Wklej tekst</summary><textarea id="pst" placeholder="Wklej tu całą zawartość pliku z meczami"></textarea><button id="pbtn">Wczytaj z wklejonego tekstu</button></details></div>
 </div>
 <div id="toast"></div>
-<p class="lnote" style="text-align:center;margin:8px 0 24px">Wersja kalkulatora: 13.10 (v23)</p>
+<p class="lnote" style="text-align:center;margin:8px 0 24px">Wersja kalkulatora: 13.10 (v25)</p>
 <script>
 var list=document.getElementById('list');
 var LOG=[],DB=null,UID=null,busy=false,busyAt=0,again=false,SYN={};
@@ -180,7 +178,7 @@ function saveLog(){
   Object.keys(SYN).forEach(function(k){
     if(!keys[k])ops.push(col.doc(k).delete().then(function(){delete SYN[k]}));
   });
-  Promise.all(ops).catch(function(){setMsg('Nie udało się zapisać')}).then(function(){busy=false;if(again){again=false;saveLog()}});
+  Promise.all(ops).catch(function(){setMsg('Nie udało się zsynchronizować z kontem, zapisano tylko na tym urządzeniu')}).then(function(){busy=false;if(again){again=false;saveLog()}});
 }
 var P0=[0,1,0,0,0,0,0],TH=P0.slice(),NLEARN=0;
 function sg(x){return 1/(1+Math.exp(-x))}
@@ -365,14 +363,10 @@ document.getElementById('llg').onclick=onLogClick;
 document.getElementById('llg').addEventListener('toggle',function(ev){if(ev.target.id==='finl')FINL=ev.target.open},true);
 var clrT=0;
 document.getElementById('clr').onclick=function(){var b=this;if(!clrT){clrT=setTimeout(function(){clrT=0;b.textContent='Wyczyść wszystko'},3000);b.textContent='Stuknij ponownie, aby potwierdzić';return}clearTimeout(clrT);clrT=0;b.textContent='Wyczyść wszystko';LOG=[];GM={};persistGM();saveLog();renderLog()};
-function exportCsv(kind,fname){
+async function exportCsv(kind,fname){
   if(!LOG.some(function(e){return kind==='all'||(kind==='late'?e.k==='late':e.k!=='late')})){setMsg('Nie ma jeszcze nic do zapisania');return}
   var t=csv(kind);
-  try{
-    var bl=new Blob([t],{type:'text/csv'}),u=URL.createObjectURL(bl),l=document.createElement('a');
-    l.href=u;l.download=fname;document.body.appendChild(l);l.click();l.remove();
-    setTimeout(function(){URL.revokeObjectURL(u)},1000);return;
-  }catch(e){}
+  try{var dd=await claude.use('downloads');if(dd){await dd.save({filename:fname,data:t});return}}catch(e){if(e&&e.code==='declined')return}
   var bx=document.getElementById('csvbox');bx.style.display='block';bx.value=t;bx.select();
 }
 document.getElementById('dl').onclick=function(){exportCsv('all','xg-matches.csv')};
@@ -423,10 +417,31 @@ document.getElementById('impf').onchange=function(){
   rd.readAsText(f);
 };
 document.getElementById('pbtn').onclick=function(){importText(document.getElementById('pst').value);document.getElementById('pst').value=''};
+(async function(){
+  try{
+    var u=await claude.use('user'),d=await claude.use('db');
+    if(!u||!d)return;
+    var id=await u.id();if(!id)return;
+    var col=d.collection('data/users/'+id),snap=await col.get();
+    DB=d;UID=id;
+    var byT={},legacy=false;
+    LOG.forEach(function(e){byT[e.t]=e});
+    snap.docs.forEach(function(x){
+      if(x.id.indexOf('m_')===0){var e=x.data();if(e){e=JSON.parse(JSON.stringify(e));byT[e.t]=e;SYN['m_'+e.t]=JSON.stringify(e)}}
+      else if(x.id==='gmmap'){var mp=(x.data()||{}).map||{};Object.keys(mp).forEach(function(k){if(!GM[k])GM[k]=mp[k]})}
+      else if(x.id==='log'){legacy=true;((x.data()||{}).entries||[]).forEach(function(e){if(!byT[e.t])byT[e.t]=JSON.parse(JSON.stringify(e))})}
+    });
+    LOG=Object.keys(byT).map(function(k){return byT[k]}).sort(function(a,b){return a.t-b.t});
+    saveLog();
+    if(Object.keys(GM).length)persistGM();
+    if(legacy)col.doc('log').delete().catch(function(){});
+    renderLog();
+  }catch(e){}
+})();
 renderLog();
 function num(v){var n=parseFloat(String(v).replace(',','.'));return isNaN(n)?0:n}
 function fmt(n){return String(Number(n.toFixed(2)))}
-var PANEL='<div class="gp"><div class="gh">Szansa na gola</div><div class="gg"><div><label>Kurs przed meczem: powyżej 2,5 gola (Over)</label><input class="ov" inputmode="decimal" placeholder="1.90"></div><div><label>Kurs przed meczem: poniżej 2,5 gola (Under)</label><input class="un" inputmode="decimal" placeholder="1.90"></div><div><label>Kurs na żywo teraz: powyżej (gole teraz + 0,5)</label><input class="lo" inputmode="decimal" placeholder="1.30"></div><div><label>Kurs na żywo teraz: poniżej (gole teraz + 0,5)</label><input class="lu" inputmode="decimal" placeholder="3.50"></div></div><div class="gg" style="margin-top:12px"><div><label>Czerwone kartki: gospodarze</label><input class="r1" inputmode="numeric"></div><div><label>Czerwone kartki: goście</label><input class="r2" inputmode="numeric"></div><div><label>Karne w 1. połowie: gospodarze (liczba)</label><input class="pk1" inputmode="numeric"></div><div><label>Karne w 1. połowie: goście (liczba)</label><input class="pk2" inputmode="numeric"></div><div><label>Strzały celne: gospodarze</label><input class="sth" inputmode="numeric"></div><div><label>Strzały celne: goście</label><input class="sta" inputmode="numeric"></div><div><label>Wielkie szanse: gospodarze</label><input class="bch" inputmode="numeric"></div><div><label>Wielkie szanse: goście</label><input class="bca" inputmode="numeric"></div><div><label>Rzuty rożne: gospodarze</label><input class="coh" inputmode="numeric"></div><div><label>Rzuty rożne: goście</label><input class="coa" inputmode="numeric"></div></div><div class="wrn"></div><div class="gr"></div><div class="bar2"><button class="sv">Zapisz prognozę</button></div><div class="late"><div class="gh">Sprawdzenie w dowolnej minucie (nadal bez gola w 2. połowie)</div><div class="swbar"><button class="swgo">Start 2. połowy</button><input class="swfrom" inputmode="numeric" placeholder="od 45"><button class="swstop">Stop</button><span class="swdisp">stoper wyłączony</span></div><p class="lnote">Stoper liczy od 45. minuty (albo od minuty wpisanej obok) i sam wpisuje „Która minuta”. Strona musi być otwarta, żeby stoper działał.</p><div class="gg"><div><label>Która minuta</label><input class="lm" inputmode="numeric" placeholder="70"></div><div></div><div><label>xG w 2. połowie: gospodarze (od 45. min do teraz)</label><input class="lx1" inputmode="decimal"></div><div><label>xG w 2. połowie: goście</label><input class="lx2" inputmode="decimal"></div><div><label>Kurs na żywo teraz: powyżej (gole teraz + 0,5)</label><input class="mo" inputmode="decimal" placeholder="1.40"></div><div><label>Kurs na żywo teraz: poniżej (gole teraz + 0,5)</label><input class="mu" inputmode="decimal" placeholder="2.80"></div><div><label>Nowe czerwone kartki: gospodarze</label><input class="lr1" inputmode="numeric"></div><div><label>Nowe czerwone kartki: goście</label><input class="lr2" inputmode="numeric"></div><div><label>Nowe karne w 2. połowie: gospodarze (liczba)</label><input class="lp1" inputmode="numeric"></div><div><label>Nowe karne w 2. połowie: goście (liczba)</label><input class="lp2" inputmode="numeric"></div><div><label>Strzały celne: gospodarze</label><input class="lst1" inputmode="numeric"></div><div><label>Strzały celne: goście</label><input class="lst2" inputmode="numeric"></div><div><label>Wielkie szanse: gospodarze</label><input class="lbc1" inputmode="numeric"></div><div><label>Wielkie szanse: goście</label><input class="lbc2" inputmode="numeric"></div><div><label>Rzuty rożne: gospodarze</label><input class="lco1" inputmode="numeric"></div><div><label>Rzuty rożne: goście</label><input class="lco2" inputmode="numeric"></div></div><div class="gr lres"></div><div class="bar2"><button class="sv2">Zapisz sprawdzenie</button></div></div></div>';
+var PANEL='<div class="gp"><div class="gh">Szansa na gola</div><div class="gg"><div><label>Kurs przed meczem: powyżej 2,5 gola (Over)</label><input class="ov" inputmode="decimal" placeholder="1.90"></div><div><label>Kurs przed meczem: poniżej 2,5 gola (Under)</label><input class="un" inputmode="decimal" placeholder="1.90"></div><div><label>Kurs na żywo teraz: powyżej (gole teraz + 0,5)</label><input class="lo" inputmode="decimal" placeholder="1.30"></div><div><label>Kurs na żywo teraz: poniżej (gole teraz + 0,5)</label><input class="lu" inputmode="decimal" placeholder="3.50"></div></div><div class="gg" style="margin-top:12px"><div><label>Czerwone kartki w 1. połowie: gospodarze</label><input class="r1" inputmode="numeric"></div><div><label>Czerwone kartki w 1. połowie: goście</label><input class="r2" inputmode="numeric"></div><div><label>Karne w 1. połowie: gospodarze</label><input class="pk1" inputmode="numeric"></div><div><label>Karne w 1. połowie: goście</label><input class="pk2" inputmode="numeric"></div><div><label>Strzały celne: gospodarze</label><input class="sth" inputmode="numeric"></div><div><label>Strzały celne: goście</label><input class="sta" inputmode="numeric"></div><div><label>Wielkie szanse: gospodarze</label><input class="bch" inputmode="numeric"></div><div><label>Wielkie szanse: goście</label><input class="bca" inputmode="numeric"></div><div><label>Rzuty rożne: gospodarze</label><input class="coh" inputmode="numeric"></div><div><label>Rzuty rożne: goście</label><input class="coa" inputmode="numeric"></div></div><div class="wrn"></div><div class="gr"></div><div class="bar2"><button class="sv">Zapisz prognozę</button></div><div class="late"><div class="gh">Sprawdzenie w dowolnej minucie (nadal bez gola w 2. połowie)</div><div class="swbar"><button class="swgo">Start 2. połowy</button><input class="swfrom" inputmode="numeric" placeholder="od 45"><button class="swstop">Stop</button><span class="swdisp">stoper wyłączony</span></div><p class="lnote">Stoper liczy od 45. minuty (albo od minuty wpisanej obok) i sam wpisuje „Która minuta”. Strona musi być otwarta, żeby stoper działał.</p><div class="gg"><div><label>Która minuta</label><input class="lm" inputmode="numeric" placeholder="70"></div><div></div><div><label>xG w 2. połowie: gospodarze (od 45. min do teraz)</label><input class="lx1" inputmode="decimal"></div><div><label>xG w 2. połowie: goście</label><input class="lx2" inputmode="decimal"></div><div><label>Kurs na żywo teraz: powyżej (gole teraz + 0,5)</label><input class="mo" inputmode="decimal" placeholder="1.40"></div><div><label>Kurs na żywo teraz: poniżej (gole teraz + 0,5)</label><input class="mu" inputmode="decimal" placeholder="2.80"></div><div><label>Czerwone kartki w 2. połowie: gospodarze</label><input class="lr1" inputmode="numeric"></div><div><label>Czerwone kartki w 2. połowie: goście</label><input class="lr2" inputmode="numeric"></div><div><label>Karne w 2. połowie: gospodarze</label><input class="lp1" inputmode="numeric"></div><div><label>Karne w 2. połowie: goście</label><input class="lp2" inputmode="numeric"></div><div><label>Strzały celne: gospodarze</label><input class="lst1" inputmode="numeric"></div><div><label>Strzały celne: goście</label><input class="lst2" inputmode="numeric"></div><div><label>Wielkie szanse: gospodarze</label><input class="lbc1" inputmode="numeric"></div><div><label>Wielkie szanse: goście</label><input class="lbc2" inputmode="numeric"></div><div><label>Rzuty rożne: gospodarze</label><input class="lco1" inputmode="numeric"></div><div><label>Rzuty rożne: goście</label><input class="lco2" inputmode="numeric"></div></div><div class="gr lres"></div><div class="bar2"><button class="sv2">Zapisz sprawdzenie</button></div></div></div>';
 function make(init){
   var box=document.createElement('div');
   box.innerHTML='<div class="mt"><div class="hd"></div><div class="hd">Drużyna</div><div class="hd">Wynik</div><div class="hd">xG</div>'+
@@ -565,7 +580,7 @@ function make(init){
     if(nv('.sth')+nv('.sta')>35||nv('.bch')+nv('.bca')>10)ws.push('Dane o strzałach lub wielkich szansach wyglądają na za duże: sprawdź.');
     if(pk1n*0.76>x1raw+0.001||pk2n*0.76>x2raw+0.001)ws.push('Karne razy 0,76 dają więcej, niż wynosi xG drużyny. Sprawdź liczbę karnych albo xG (xG ustawiono na 0).');
     var lpa=Math.floor(nv('.lp1')),lpb=Math.floor(nv('.lp2'));
-    if(lpa*0.76>nv('.lx1')+0.001||lpb*0.76>nv('.lx2')+0.001)ws.push('Nowe karne razy 0,76 dają więcej, niż wynosi xG drugiej połowy tej drużyny. Sprawdź liczbę karnych albo xG (xG ustawiono na 0).');
+    if(lpa*0.76>nv('.lx1')+0.001||lpb*0.76>nv('.lx2')+0.001)ws.push('Karne w 2. połowie razy 0,76 dają więcej, niż wynosi xG drugiej połowy tej drużyny. Sprawdź liczbę karnych albo xG (xG ustawiono na 0).');
     var lmv=nv('.lm');
     if(q('.lm').value!==''&&(lmv<46||lmv>89))ws.push('Minuta sprawdzenia powinna być od 46 do 89.');
     if(nv('.lx1')+nv('.lx2')>3)ws.push('xG drugiej połowy powyżej 3 w kilkadziesiąt minut? Sprawdź dane.');
