@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="xG">
 <title>Kalkulator xG</title>
 <style>
 :root{
@@ -178,7 +180,7 @@ function saveLog(){
   Object.keys(SYN).forEach(function(k){
     if(!keys[k])ops.push(col.doc(k).delete().then(function(){delete SYN[k]}));
   });
-  Promise.all(ops).catch(function(){setMsg('Nie udało się zsynchronizować z kontem, zapisano tylko na tym urządzeniu')}).then(function(){busy=false;if(again){again=false;saveLog()}});
+  Promise.all(ops).catch(function(){setMsg('Nie udało się zapisać')}).then(function(){busy=false;if(again){again=false;saveLog()}});
 }
 var P0=[0,1,0,0,0,0,0],TH=P0.slice(),NLEARN=0;
 function sg(x){return 1/(1+Math.exp(-x))}
@@ -363,10 +365,14 @@ document.getElementById('llg').onclick=onLogClick;
 document.getElementById('llg').addEventListener('toggle',function(ev){if(ev.target.id==='finl')FINL=ev.target.open},true);
 var clrT=0;
 document.getElementById('clr').onclick=function(){var b=this;if(!clrT){clrT=setTimeout(function(){clrT=0;b.textContent='Wyczyść wszystko'},3000);b.textContent='Stuknij ponownie, aby potwierdzić';return}clearTimeout(clrT);clrT=0;b.textContent='Wyczyść wszystko';LOG=[];GM={};persistGM();saveLog();renderLog()};
-async function exportCsv(kind,fname){
+function exportCsv(kind,fname){
   if(!LOG.some(function(e){return kind==='all'||(kind==='late'?e.k==='late':e.k!=='late')})){setMsg('Nie ma jeszcze nic do zapisania');return}
   var t=csv(kind);
-  try{var dd=await claude.use('downloads');if(dd){await dd.save({filename:fname,data:t});return}}catch(e){if(e&&e.code==='declined')return}
+  try{
+    var bl=new Blob([t],{type:'text/csv'}),u=URL.createObjectURL(bl),l=document.createElement('a');
+    l.href=u;l.download=fname;document.body.appendChild(l);l.click();l.remove();
+    setTimeout(function(){URL.revokeObjectURL(u)},1000);return;
+  }catch(e){}
   var bx=document.getElementById('csvbox');bx.style.display='block';bx.value=t;bx.select();
 }
 document.getElementById('dl').onclick=function(){exportCsv('all','xg-matches.csv')};
@@ -417,27 +423,6 @@ document.getElementById('impf').onchange=function(){
   rd.readAsText(f);
 };
 document.getElementById('pbtn').onclick=function(){importText(document.getElementById('pst').value);document.getElementById('pst').value=''};
-(async function(){
-  try{
-    var u=await claude.use('user'),d=await claude.use('db');
-    if(!u||!d)return;
-    var id=await u.id();if(!id)return;
-    var col=d.collection('data/users/'+id),snap=await col.get();
-    DB=d;UID=id;
-    var byT={},legacy=false;
-    LOG.forEach(function(e){byT[e.t]=e});
-    snap.docs.forEach(function(x){
-      if(x.id.indexOf('m_')===0){var e=x.data();if(e){e=JSON.parse(JSON.stringify(e));byT[e.t]=e;SYN['m_'+e.t]=JSON.stringify(e)}}
-      else if(x.id==='gmmap'){var mp=(x.data()||{}).map||{};Object.keys(mp).forEach(function(k){if(!GM[k])GM[k]=mp[k]})}
-      else if(x.id==='log'){legacy=true;((x.data()||{}).entries||[]).forEach(function(e){if(!byT[e.t])byT[e.t]=JSON.parse(JSON.stringify(e))})}
-    });
-    LOG=Object.keys(byT).map(function(k){return byT[k]}).sort(function(a,b){return a.t-b.t});
-    saveLog();
-    if(Object.keys(GM).length)persistGM();
-    if(legacy)col.doc('log').delete().catch(function(){});
-    renderLog();
-  }catch(e){}
-})();
 renderLog();
 function num(v){var n=parseFloat(String(v).replace(',','.'));return isNaN(n)?0:n}
 function fmt(n){return String(Number(n.toFixed(2)))}
