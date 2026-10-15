@@ -144,16 +144,46 @@ input{font-size:16px}
 .cl.mp small{display:block;font-weight:400;font-size:11px;color:#333;margin-top:2px;line-height:1.3}
 .cl.mp.ylw{background:#f0b429}
 .cl.mp.rd{background:#f08a80}
+.tabs{display:flex;gap:6px;margin:0 0 10px}
+.tab{flex:1;background:#e6defa;color:#4b2a99;border:2px solid #7c3aed;font-size:14px;font-weight:700;padding:11px 8px;border-radius:8px}
+.tab.on{background:#7c3aed;color:#fff}
+.rec{border-radius:8px;padding:12px 14px;margin:0 0 10px;color:#111;font-size:14px;line-height:1.45;background:#fff3cd;border:2px solid #f0b429}
+.rec.ok{background:#d6f3e1;border-color:#1f9d57}
+.rec.no{background:#fadcd9;border-color:#d93025}
+.rec b{font-size:16px;display:block;margin-bottom:4px}
+.pills{display:flex;gap:6px;margin:0 0 10px}
+.pill{flex:1;background:#fff;color:#111;border:3px solid #bbb;font-size:12px;padding:8px 4px;border-radius:8px;line-height:1.3}
+.pill b{font-size:16px}
+.pill.on{box-shadow:0 0 0 3px #7c3aed}
+.pill.g{border-color:#1f9d57;background:#d6f3e1}
+.pill.ylw{border-color:#f0b429;background:#fff3cd}
+.pill.rd{border-color:#d93025;background:#fadcd9}
+.cmpcard{display:none}
+.cmpcard.on{display:block}
+.cmptitle{font-weight:700;margin:2px 0 6px;color:#fff;font-size:15px}
+#cmpList .late,#cmpList .gr,#cmpList .bar2,#cmpList .gb1,#cmpList .bar:not(.cmpact){display:none}
+.cmpact{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.cmpgo{background:#7c3aed}
+.rc{background:#7c3aed;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px;white-space:nowrap}
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div class="tabs"><button class="tab on" id="tabCalc">Kalkulator</button><button class="tab" id="tabCmp">Porównanie meczów</button></div>
+  <div id="cmp" style="display:none">
+    <div id="cmpRec" class="rec wait"></div>
+    <div id="cmpPills" class="pills"></div>
+    <div id="cmpList"></div>
+    <div class="bar"><button id="cmpClear" class="reset">Wyczyść karty</button><button id="cmpSaveAll">Zapisz wszystkie mecze</button></div>
+  </div>
+  <div id="calcTab">
   <div id="list"></div>
   
   <div class="gp logbox"><div class="gh">Mecze i uczenie się</div><div id="msg" class="lnote"></div><div id="cnt"></div><div id="cal"></div><div class="sec">Zapisane mecze</div><div id="lg"></div><div class="sec s70">Sprawdzenia w trakcie 2. połowy (gol od wpisanej minuty)</div><div id="lcnt"></div><div id="llg"></div><div class="bar"><button id="dl">Zapisz mecze do pliku</button><label class="fbtn" for="impf">Wczytaj mecze z pliku</label><input type="file" id="impf" class="vh"><button class="rm" id="clr">Wyczyść wszystko</button></div><textarea id="csvbox" readonly aria-label="Mecze jako tekst CSV"></textarea><div id="msg2" class="lnote"></div><details id="pasteBox"><summary>Nie działa wczytywanie z pliku? Wklej tekst</summary><textarea id="pst" placeholder="Wklej tu całą zawartość pliku z meczami"></textarea><button id="pbtn">Wczytaj z wklejonego tekstu</button></details></div>
 </div>
+</div>
 <div id="toast"></div>
-<p class="lnote" style="text-align:center;margin:8px 0 24px">Wersja kalkulatora: 13.10 (v25)</p>
+<p class="lnote" style="text-align:center;margin:8px 0 24px">Wersja kalkulatora: 13.10 (v28)</p>
 <script>
 var list=document.getElementById('list');
 var LOG=[],DB=null,UID=null,busy=false,busyAt=0,again=false,SYN={};
@@ -272,20 +302,25 @@ function hist(n1,n2){
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function resText(x){if(x.o===null)return 'Czeka na wynik';if(!x.o)return 'Brak gola w 2. połowie';return 'Gol w 2. połowie ('+(gmOf(x)?gmOf(x)+'. minuta':'minuta nieznana')+')'}
 function csv(kind){
-  var rows=[['data','mecz','wynik_w_przerwie','xg_pierwsza_polowa','kurs_over25','kurs_under25','czerwone_kartki','szansa_przerwa_procent','minuta_sprawdzenia','szansa_sprawdzenie_procent','wynik_2_polowa']];
+  var rows=[['data','mecz','wynik_w_przerwie','xg_pierwsza_polowa','kurs_over25','kurs_under25','czerwone_kartki','szansa_przerwa_procent','minuta_sprawdzenia','szansa_sprawdzenie_procent','wynik_2_polowa','polecony']];
   var groups={},order=[];
   LOG.forEach(function(e){var k=new Date(e.t).toISOString().slice(0,10)+'|'+e.n;if(!groups[k]){groups[k]={ht:null,lt:null};order.push(k)}if(e.k==='late')groups[k].lt=e;else groups[k].ht=e});
   order.forEach(function(k){
     var g=groups[k],h=g.ht,l=g.lt,a=h||l,res=(l&&l.o!==null)?l:((h&&h.o!==null)?h:a);
     var pick=function(f){var v=(h&&h[f])?h[f]:((l&&l[f])?l[f]:'');return v===''?'':Math.round(v*100)/100};
-    rows.push([k.split('|')[0],a.n,a.sc,pick('mx'),pick('ov'),pick('un'),(h?h.rd:(l?l.rd:0))||0,h?(h.p*100).toFixed(1):'',l?l.m:'',l?(l.p*100).toFixed(1):'',resText(res)]);
+    rows.push([k.split('|')[0],a.n,a.sc,pick('mx'),pick('ov'),pick('un'),(h?h.rd:(l?l.rd:0))||0,h?(h.p*100).toFixed(1):'',l?l.m:'',l?(l.p*100).toFixed(1):'',resText(res),h&&h.rec==='y'?'tak':(h&&h.rec==='n'?'nie':(h&&h.rec==='s'?'pominięty':''))]);
   });
   return '\ufeff'+rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(',')}).join('\n');
 }
 function renderLog(){
   train();
   var done=resolved(),G=done.filter(function(e){return e.o}).length;
-  document.getElementById('cnt').innerHTML='<div class="gr">'+R('Zapisane mecze',LOG.filter(function(e){return e.k!=='late'}).length)+R('Z wynikiem',done.length)+R('Gol w 2. połowie',done.length?G+' z '+done.length+' ('+Math.round(G/done.length*100)+'%)':'-')+R('Uczenie się',done.length?'włączone (liczba meczów: '+done.length+')':'zacznie się po pierwszym wyniku')+'</div>';
+  var ry=done.filter(function(e){return e.rec==='y'}),rn=done.filter(function(e){return e.rec==='n'}),recRows='',recNote='';
+  var fmtR=function(a){var g=a.filter(function(e){return e.o}).length;return g+' z '+a.length+' ('+Math.round(g/a.length*100)+'%)'};
+  if(ry.length)recRows+=R('Polecone przez porównanie: gol w 2. połowie',fmtR(ry));
+  if(rn.length)recRows+=R('Niepolecone (porównane): gol w 2. połowie',fmtR(rn));
+  if(ry.length&&rn.length)recNote='<p class="lnote">Jeśli po kilkudziesięciu meczach polecone mają wyraźnie wyższy odsetek goli niż niepolecone, porównywanie działa.</p>';
+  document.getElementById('cnt').innerHTML='<div class="gr">'+R('Zapisane mecze',LOG.filter(function(e){return e.k!=='late'}).length)+R('Z wynikiem',done.length)+R('Gol w 2. połowie',done.length?G+' z '+done.length+' ('+Math.round(G/done.length*100)+'%)':'-')+R('Uczenie się',done.length?'włączone (liczba meczów: '+done.length+')':'zacznie się po pierwszym wyniku')+recRows+'</div>'+recNote;
   var cal='';
   if(done.length){
     var B=[[0,0.5],[0.5,0.6],[0.6,0.7],[0.7,0.8],[0.8,1.01]],rows='';
@@ -309,7 +344,7 @@ function renderLog(){
   }else cal='<p class="lnote">Zapisz mecz w przerwie, a po meczu zaznacz, czy w 2. połowie padł gol. Kalkulator uczy się z każdego wyniku.</p>';
   document.getElementById('cal').innerHTML=cal;
   function mrow(e,i){
-    return '<div'+(e.o===null?'':(e.o?' class="rg"':' class="rn"'))+'><span>'+esc(e.n)+(e.k==='late'?' \u00b7 min. '+e.m:'')+'</span><span>'+(e.o===null?'<input class="gmi" inputmode="numeric" placeholder="min." aria-label="Minuta gola"><button class="lb yes" data-i="'+i+'" data-a="1">Tak, gol</button><button class="lb no" data-i="'+i+'" data-a="0">Brak gola</button>':(e.o?'<input class="gmi" inputmode="numeric" placeholder="min." value="'+(gmOf(e)||'')+'" aria-label="Minuta gola"><button class="lb" data-i="'+i+'" data-a="m">Zapisz</button><span class="bd g">Gol'+(gmOf(e)?' · '+gmOf(e)+'. min':'')+'</span>':'<span class="bd n">Brak gola</span>'))+'<button class="lb xx" data-i="'+i+'" data-a="x">x</button></span></div>';
+    return '<div'+(e.o===null?'':(e.o?' class="rg"':' class="rn"'))+'><span>'+esc(e.n)+(e.k==='late'?' \u00b7 min. '+e.m:'')+(e.rec==='y'?' <span class="rc">\u2605 polecony</span>':'')+'</span><span>'+(e.o===null?'<input class="gmi" inputmode="numeric" placeholder="min." aria-label="Minuta gola"><button class="lb yes" data-i="'+i+'" data-a="1">Tak, gol</button><button class="lb no" data-i="'+i+'" data-a="0">Brak gola</button>':(e.o?'<input class="gmi" inputmode="numeric" placeholder="min." value="'+(gmOf(e)||'')+'" aria-label="Minuta gola"><button class="lb" data-i="'+i+'" data-a="m">Zapisz</button><span class="bd g">Gol'+(gmOf(e)?' · '+gmOf(e)+'. min':'')+'</span>':'<span class="bd n">Brak gola</span>'))+'<button class="lb xx" data-i="'+i+'" data-a="x">x</button></span></div>';
   }
   var lp='',lf='',nf=0;
   for(var i=LOG.length-1;i>=0;i--){
@@ -388,10 +423,11 @@ function importV2(rows){
     var sc=String(r[ix('wynik_w_przerwie')]||'').trim(),dt=Date.parse(String(r[ix('data')]||'').trim()),t0=(isNaN(dt)?Date.now():dt)+n*2;
     var rt=String(r[gi]||'').trim().toLowerCase(),o=rt.indexOf('gol')===0?true:(rt.indexOf('brak')===0?false:null),mm=rt.match(/(\d+)\.\s*min/),gm=mm?parseInt(mm[1]):undefined;
     var parts=name.split(' - '),mx=numv(r[ix('xg_pierwsza_polowa')])||0,ov=numv(r[ix('kurs_over25')])||0,un=numv(r[ix('kurs_under25')])||0,rd=parseInt(r[ix('czerwone_kartki')])||0;
+    var rcv=String(r[ix('polecony')]||'').trim().toLowerCase(),recv=rcv==='tak'?'y':(rcv==='nie'?'n':(rcv==='pominięty'?'s':undefined));
     [[numv(r[ix('szansa_przerwa_procent')]),false],[numv(r[ix('szansa_sprawdzenie_procent')]),true]].forEach(function(z,zi){
       var pct=z[0];if(isNaN(pct))return;
       var key=name+'|'+sc+'|'+pct.toFixed(1)+'|'+(z[1]?'late':'');if(have[key]){skip++;return}have[key]=1;
-      LOG.push({t:uniqT(t0+zi),k:z[1]?'late':undefined,n:name,h:parts[0],a:parts[1]||'',m:z[1]?(parseInt(r[ix('minuta_sprawdzenia')])||70):45,sc:sc,p:pct/100,mx:mx,ov:ov,un:un,rd:rd,f:null,o:o,gm:gm});add++;
+      LOG.push({t:uniqT(t0+zi),k:z[1]?'late':undefined,n:name,h:parts[0],a:parts[1]||'',m:z[1]?(parseInt(r[ix('minuta_sprawdzenia')])||70):45,sc:sc,p:pct/100,mx:mx,ov:ov,un:un,rd:rd,f:null,o:o,gm:gm,rec:z[1]?undefined:recv});add++;
     });
   });
   LOG.sort(function(a,b){return a.t-b.t});saveLog();renderLog();
@@ -427,7 +463,7 @@ renderLog();
 function num(v){var n=parseFloat(String(v).replace(',','.'));return isNaN(n)?0:n}
 function fmt(n){return String(Number(n.toFixed(2)))}
 var PANEL='<div class="gp"><div class="gh">Szansa na gola</div><div class="gg"><div><label>Kurs przed meczem: powyżej 2,5 gola (Over)</label><input class="ov" inputmode="decimal" placeholder="1.90"></div><div><label>Kurs przed meczem: poniżej 2,5 gola (Under)</label><input class="un" inputmode="decimal" placeholder="1.90"></div><div><label>Kurs na żywo teraz: powyżej (gole teraz + 0,5)</label><input class="lo" inputmode="decimal" placeholder="1.30"></div><div><label>Kurs na żywo teraz: poniżej (gole teraz + 0,5)</label><input class="lu" inputmode="decimal" placeholder="3.50"></div></div><div class="gg" style="margin-top:12px"><div><label>Czerwone kartki w 1. połowie: gospodarze</label><input class="r1" inputmode="numeric"></div><div><label>Czerwone kartki w 1. połowie: goście</label><input class="r2" inputmode="numeric"></div><div><label>Karne w 1. połowie: gospodarze</label><input class="pk1" inputmode="numeric"></div><div><label>Karne w 1. połowie: goście</label><input class="pk2" inputmode="numeric"></div><div><label>Strzały celne: gospodarze</label><input class="sth" inputmode="numeric"></div><div><label>Strzały celne: goście</label><input class="sta" inputmode="numeric"></div><div><label>Wielkie szanse: gospodarze</label><input class="bch" inputmode="numeric"></div><div><label>Wielkie szanse: goście</label><input class="bca" inputmode="numeric"></div><div><label>Rzuty rożne: gospodarze</label><input class="coh" inputmode="numeric"></div><div><label>Rzuty rożne: goście</label><input class="coa" inputmode="numeric"></div></div><div class="wrn"></div><div class="gr"></div><div class="bar2"><button class="sv">Zapisz prognozę</button></div><div class="late"><div class="gh">Sprawdzenie w dowolnej minucie (nadal bez gola w 2. połowie)</div><div class="swbar"><button class="swgo">Start 2. połowy</button><input class="swfrom" inputmode="numeric" placeholder="od 45"><button class="swstop">Stop</button><span class="swdisp">stoper wyłączony</span></div><p class="lnote">Stoper liczy od 45. minuty (albo od minuty wpisanej obok) i sam wpisuje „Która minuta”. Strona musi być otwarta, żeby stoper działał.</p><div class="gg"><div><label>Która minuta</label><input class="lm" inputmode="numeric" placeholder="70"></div><div></div><div><label>xG w 2. połowie: gospodarze (od 45. min do teraz)</label><input class="lx1" inputmode="decimal"></div><div><label>xG w 2. połowie: goście</label><input class="lx2" inputmode="decimal"></div><div><label>Kurs na żywo teraz: powyżej (gole teraz + 0,5)</label><input class="mo" inputmode="decimal" placeholder="1.40"></div><div><label>Kurs na żywo teraz: poniżej (gole teraz + 0,5)</label><input class="mu" inputmode="decimal" placeholder="2.80"></div><div><label>Czerwone kartki w 2. połowie: gospodarze</label><input class="lr1" inputmode="numeric"></div><div><label>Czerwone kartki w 2. połowie: goście</label><input class="lr2" inputmode="numeric"></div><div><label>Karne w 2. połowie: gospodarze</label><input class="lp1" inputmode="numeric"></div><div><label>Karne w 2. połowie: goście</label><input class="lp2" inputmode="numeric"></div><div><label>Strzały celne: gospodarze</label><input class="lst1" inputmode="numeric"></div><div><label>Strzały celne: goście</label><input class="lst2" inputmode="numeric"></div><div><label>Wielkie szanse: gospodarze</label><input class="lbc1" inputmode="numeric"></div><div><label>Wielkie szanse: goście</label><input class="lbc2" inputmode="numeric"></div><div><label>Rzuty rożne: gospodarze</label><input class="lco1" inputmode="numeric"></div><div><label>Rzuty rożne: goście</label><input class="lco2" inputmode="numeric"></div></div><div class="gr lres"></div><div class="bar2"><button class="sv2">Zapisz sprawdzenie</button></div></div></div>';
-function make(init){
+function make(init,target,idx){
   var box=document.createElement('div');
   box.innerHTML='<div class="mt"><div class="hd"></div><div class="hd">Drużyna</div><div class="hd">Wynik</div><div class="hd">xG</div>'+
   '<div class="lab">Gosp.</div><div class="nm"><input class="n1" placeholder="Gospodarze" aria-label="Gospodarze"></div><div class="in"><input class="s1" inputmode="numeric" aria-label="Wynik gospodarzy"></div><div class="in"><input class="x1" inputmode="decimal" aria-label="xG gospodarzy"></div>'+
@@ -502,6 +538,10 @@ function make(init){
       mpEl.classList.remove('g','ylw','rd');mpEl.classList.add(mpCls)}
     var exp1h=prior*0.45,rt1=exp1h>0?obs/exp1h:0;
     setT('.tp',obs>0?('x'+rt1.toFixed(2)+(rt1<0.75?' (wolniejsze)':(rt1>1.25?' (szybsze)':' (normalne)'))):'brak danych');
+    box.dataset.pcv=pc;box.dataset.need=need;box.dataset.cls=(typeof mpCls!=='undefined'?mpCls:'');
+    box.dataset.has=(x1raw+x2raw>0)?'1':'';box.dataset.rt=(obs>0?rt1:0);
+    box.dataset.skip=(Math.abs(s1-s2)>=2&&Math.max(s1,s2)>=3)?'1':'';
+    box.dataset.lo=lov>1?lov:'';box.dataset.ci=cih?(Math.round(cih[0]*100)+'-'+Math.round(cih[1]*100)):'';
 
 
     var pn=1-Math.exp(-tot*mom*(rem0>0?rem/rem0:1)*(F(Math.min(90,m+15))-Fm));
@@ -587,7 +627,7 @@ function make(init){
   q('.swgo').onclick=function(){swStart(Date.now(),parseInt(q('.swfrom').value)||45)};
   q('.swstop').onclick=function(){clearInterval(swTimer);swT0=0;try{localStorage.removeItem('xgsw')}catch(e){}q('.swdisp').textContent='stoper wyłączony'};
   document.addEventListener('visibilitychange',function(){if(!document.hidden)swUpdate()});
-  try{var sw0=JSON.parse(localStorage.getItem('xgsw')||'null');if(sw0&&Date.now()-sw0.t<3*3600*1000)swStart(sw0.t,sw0.f)}catch(e){}
+  if(!target)try{var sw0=JSON.parse(localStorage.getItem('xgsw')||'null');if(sw0&&Date.now()-sw0.t<3*3600*1000)swStart(sw0.t,sw0.f)}catch(e){}
   q('.sv2').onclick=function(){
     var lp=parseFloat(box.dataset.lp);
     if(isNaN(lp)){setMsg('Najpierw wpisz minutę (od 46 do 89)');return}
@@ -597,9 +637,91 @@ function make(init){
     var b=this;b.textContent='Zapisano';setTimeout(function(){b.textContent='Zapisz sprawdzenie'},1200)};
   q('.reset').onclick=function(){box.querySelectorAll('input').forEach(function(i){i.value=''});run()};
   run();
-  list.appendChild(box);
+  if(target){
+    box.classList.add('cmpcard');
+    box.insertAdjacentHTML('afterbegin','<div class="cmptitle">Mecz '+idx+'</div>');
+    box.insertAdjacentHTML('beforeend','<div class="bar cmpact"><button class="cmpgo">Przenieś do kalkulatora</button><button class="cmpsave">Zapisz mecz</button></div>');
+    box.querySelector('.cmpgo').onclick=function(){cmpGo(box)};
+    box.querySelector('.cmpsave').onclick=function(){cmpSave(box)};
+    target.appendChild(box);
+  }else list.appendChild(box);
 }
 make();
+function showTab(t){
+  document.getElementById('calcTab').style.display=t==='calc'?'block':'none';
+  document.getElementById('cmp').style.display=t==='cmp'?'block':'none';
+  document.getElementById('tabCalc').classList.toggle('on',t==='calc');
+  document.getElementById('tabCmp').classList.toggle('on',t==='cmp');
+  window.scrollTo(0,0);
+}
+document.getElementById('tabCalc').onclick=function(){showTab('calc')};
+document.getElementById('tabCmp').onclick=function(){showTab('cmp')};
+function cmpBoxes(){return Array.prototype.slice.call(document.querySelectorAll('#cmpList .cmpcard'))}
+function cmpInfo(){
+  return cmpBoxes().map(function(b,i){
+    var d=b.dataset,n1=(b.querySelector('.n1').value||'').trim(),n2=(b.querySelector('.n2').value||'').trim();
+    return {i:i+1,box:b,has:d.has==='1',pc:parseFloat(d.pcv),cls:d.cls,skip:d.skip==='1',rt:parseFloat(d.rt)||0,need:parseFloat(d.need)||0,lo:d.lo,ci:d.ci,
+      name:(n1||n2)?((n1||'?')+' - '+(n2||'?')):('Mecz '+(i+1)),sc:(b.querySelector('.s1').value||'0')+':'+(b.querySelector('.s2').value||'0')};
+  });
+}
+var CMPBEST=0;
+function cmpUpdate(){
+  var info=cmpInfo(),rec=document.getElementById('cmpRec'),pills=document.getElementById('cmpPills');CMPBEST=0;
+  pills.innerHTML=info.map(function(x){return '<button class="pill'+(x.box.classList.contains('on')?' on':'')+((x.has&&!x.skip)?' '+x.cls:'')+'" data-i="'+x.i+'">Mecz '+x.i+'<br><b>'+(x.has?(x.pc*100).toFixed(0)+'%':'\u2013')+'</b>'+(x.skip?'<br>pomijam':'')+'</button>'}).join('');
+  var filled=info.filter(function(x){return x.has}),cand=filled.filter(function(x){return !x.skip}),ok=cand.filter(function(x){return x.cls==='g'});
+  var skipNote=info.filter(function(x){return x.has&&x.skip}).map(function(x){return 'Mecz '+x.i+' pomijam: wynik '+x.sc+' w przerwie (takich meczów odpuszczasz).'}).join(' ');
+  var html,cl;
+  if(!filled.length){cl='rec wait';html='<b>Wpisz dane meczów</b>Wpisz xG, wynik i kursy w kartach poniżej (do 3 meczów), a pokażę, który wybrać.'}
+  else if(ok.length){
+    ok.sort(function(a,b){return b.pc-a.pc||b.rt-a.rt});var best=ok[0];CMPBEST=best.i;
+    var parts=['szansa na gola '+(best.pc*100).toFixed(1)+'%'+(best.ci?' (zakres '+best.ci.replace('-','\u2013')+'%)':'')+', powyżej progu 80%'];
+    if(best.rt>1.25)parts.push('szybkie tempo 1. połowy (x'+best.rt.toFixed(2)+')');else if(best.rt>0&&best.rt<0.75)parts.push('uwaga: wolne tempo 1. połowy (x'+best.rt.toFixed(2)+')');else if(best.rt>0)parts.push('normalne tempo 1. połowy (x'+best.rt.toFixed(2)+')');
+    if(best.need>0)parts.push('przy kursie '+best.lo+' opłaca się od '+Math.round(best.need*100)+'%, a masz '+Math.round(best.pc*100)+'%');
+    parts.push('wynik w przerwie '+best.sc);
+    cl='rec ok';html='<b>Obstaw mecz '+best.i+' ('+esc(best.name)+'), bo:</b>'+esc(parts.join('; '))+'.'+(ok.length>1?' Drugi w kolejności: mecz '+ok[1].i+' ('+(ok[1].pc*100).toFixed(0)+'%).':'')+(skipNote?' '+esc(skipNote):'');
+  }else{
+    var nb=cand.slice().sort(function(a,b){return b.pc-a.pc})[0];
+    cl='rec no';
+    var why=cand.map(function(x){var pc=Math.round(x.pc*100);
+      if(x.pc<0.8)return 'Mecz '+x.i+': '+pc+'% to za mało (próg 80%).';
+      return 'Mecz '+x.i+': '+pc+'%, ale przy kursie '+x.lo+' potrzeba '+Math.round(x.need*100)+'% plus 3 pkt zapasu, czyli '+Math.round(x.need*100+3)+'%.';}).join(' ');
+    html='<b>Żaden mecz nie jest dość dobry. Nie obstawiaj.</b>Żaden nie spełnia progu (od 80%, a przy kursie na żywo także opłacalności).<br>'+esc(why)+'<br>'+(nb?' Najbliżej jest mecz '+nb.i+' ('+esc(nb.name)+', '+(nb.pc*100).toFixed(0)+'%), ale to za mało.':'')+(skipNote?' '+esc(skipNote):'');
+  }
+  rec.className=cl;rec.innerHTML=html;
+}
+document.getElementById('cmpPills').onclick=function(e){
+  var b=e.target.closest?e.target.closest('.pill'):null;if(!b)return;
+  cmpBoxes().forEach(function(c,i){c.classList.toggle('on',i+1===+b.dataset.i)});cmpUpdate();
+};
+var CMPF=['n1','n2','s1','s2','x1','x2','ov','un','lo','lu','r1','r2','pk1','pk2','sth','sta','bch','bca','coh','coa'];
+function cmpGo(box){
+  var main=document.querySelector('#list>div');
+  CMPF.forEach(function(f){var a=box.querySelector('.'+f),b=main.querySelector('.'+f);if(a&&b)b.value=a.value});
+  main.dispatchEvent(new Event('input'));
+  showTab('calc');
+  setMsg('Przeniesiono do kalkulatora: '+((box.querySelector('.n1').value||'Gospodarze')+' - '+(box.querySelector('.n2').value||'Goście')));
+}
+function cmpSave(box,quiet){
+  if(box.dataset.has!=='1'){if(!quiet)setMsg('Najpierw wpisz xG tego meczu');return false}
+  var nm=(box.querySelector('.n1').value||'Gospodarze')+' - '+(box.querySelector('.n2').value||'Goście'),dk=new Date().toISOString().slice(0,10);
+  var dup=LOG.some(function(e){return e.k!=='late'&&e.n===nm&&new Date(e.t).toISOString().slice(0,10)===dk});
+  if(dup){if(!quiet)setMsg('Ten mecz już zapisano dzisiaj: '+nm);return false}
+  box.querySelector('.sv').click();
+  var inf=cmpInfo().filter(function(x){return x.box===box})[0],last=LOG[LOG.length-1];
+  if(last&&last.n===nm&&last.k!=='late'){last.rec=(inf&&inf.skip)?'s':((inf&&inf.i===CMPBEST)?'y':'n');saveLog();renderLog()}
+  return true;
+}
+document.getElementById('cmpSaveAll').onclick=function(){
+  var n=0,dup=0,all=cmpBoxes().filter(function(b){return b.dataset.has==='1'});
+  if(!all.length){setMsg('Nie ma wpisanych meczów do zapisania');return}
+  all.forEach(function(b){if(cmpSave(b,true))n++;else dup++});
+  setMsg('Zapisano '+n+' z '+all.length+' meczów (czekają na wynik)'+(dup?'. Pominięto '+dup+' już zapisane.':'.'));
+};
+document.getElementById('cmpClear').onclick=function(){cmpBoxes().forEach(function(b){b.querySelectorAll('input').forEach(function(i){i.value=''});b.dispatchEvent(new Event('input'))});cmpUpdate()};
+for(var ci=1;ci<=3;ci++)make(null,document.getElementById('cmpList'),ci);
+cmpBoxes()[0].classList.add('on');
+document.getElementById('cmpList').addEventListener('input',cmpUpdate);
+cmpUpdate();
 
 </script>
 </body>
